@@ -112,7 +112,7 @@ class JobStore:
         if not messages:
             return None
         message_id, fields = messages[0]
-        return _decode(message_id), _decode(fields.get(b"jobId") or fields.get("jobId"))
+        return _parse_stream_message(message_id, fields)
 
     def ack(self, message_id: str) -> None:
         script = """
@@ -197,7 +197,13 @@ class JobStore:
         raw = self.client.hgetall(self.job_key(job_id))
         if not raw:
             return None
-        return {_decode(key): _decode(value) for key, value in raw.items()}
+        decoded: dict[str, str] = {}
+        for key, value in raw.items():
+            decoded_key = _decode(key)
+            decoded_value = _decode(value)
+            if decoded_key is not None and decoded_value is not None:
+                decoded[decoded_key] = decoded_value
+        return decoded
 
     def _update(self, job_id: str, **fields: str) -> None:
         fields["updatedAt"] = str(_epoch_ms())
@@ -223,14 +229,24 @@ class JobStore:
         if not messages:
             return None
         message_id, fields = messages[0]
-        return _decode(message_id), _decode(fields.get(b"jobId") or fields.get("jobId"))
+        return _parse_stream_message(message_id, fields)
 
 
 def redis_client(settings: Settings) -> redis.Redis:
     return redis.Redis.from_url(settings.redis_url)
 
 
-def _decode(value: Any) -> str:
+def _parse_stream_message(message_id: Any, fields: dict[Any, Any]) -> tuple[str, str] | None:
+    decoded_message_id = _decode(message_id)
+    decoded_job_id = _decode(fields.get(b"jobId") or fields.get("jobId"))
+    if not decoded_message_id or not decoded_job_id:
+        return None
+    return decoded_message_id, decoded_job_id
+
+
+def _decode(value: Any) -> str | None:
+    if value is None:
+        return None
     return value.decode("utf-8") if isinstance(value, bytes) else str(value)
 
 

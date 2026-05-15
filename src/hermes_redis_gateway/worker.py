@@ -57,6 +57,7 @@ class Worker:
             lease = self.slots.acquire(job_id)
             if lease is None:
                 self.store.requeue_pending(message_id, job_id)
+                time.sleep(1.0)
                 continue
             heartbeat_stop = threading.Event()
             lease_lost = threading.Event()
@@ -117,12 +118,30 @@ class Worker:
             self.store.ack(message_id)
 
     def _heartbeat(self, lease: SlotLease, heartbeat_stop: threading.Event, lease_lost: threading.Event) -> None:
-        interval = max(1, self.settings.slot_lease_seconds // 3)
-        while not heartbeat_stop.wait(interval):
-            if not self.slots.refresh(lease):
-                print(f"lost slot lease slot={lease.name}", flush=True)
+        refresh_interval = max(1, self.settings.slot_lease_seconds // 3)
+        last_refresh = time.monotonic()
+        while not heartbeat_stop.wait(1.0):
+            if STOP.is_set():
                 lease_lost.set()
                 return
+            refreshed_at = self._refresh_lease_if_needed(lease, last_refresh, refresh_interval)
+            if refreshed_at is None:
+                lease_lost.set()
+                return
+            last_refresh = refreshed_at
+
+    def _refresh_lease_if_needed(
+        self,
+        lease: SlotLease,
+        last_refresh: float,
+        refresh_interval: int,
+    ) -> float | None:
+        if time.monotonic() - last_refresh < refresh_interval:
+            return last_refresh
+        if not self.slots.refresh(lease):
+            print(f"lost slot lease slot={lease.name}", flush=True)
+            return None
+        return time.monotonic()
 
     def _stream_reclaim_min_idle_ms(self) -> int:
         min_idle_seconds = max(
