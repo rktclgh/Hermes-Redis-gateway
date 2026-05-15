@@ -1,0 +1,63 @@
+import json
+
+from hermes_redis_gateway.redis_store import JobStore
+
+
+class Settings:
+    allowed_models = frozenset({"gpt-5.4-mini"})
+    hermes_model = "gpt-5.4-mini"
+    job_prefix = "job:"
+    job_ttl_seconds = 60
+    max_prompt_bytes = 1000
+    queue_count_key = "queue:count"
+    queue_max_size = 10
+    stream_group = "workers"
+    stream_key = "stream"
+
+
+class FakeRedis:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, int, tuple[object, ...]]] = []
+
+    def eval(self, script: str, key_count: int, *args: object) -> str:
+        self.calls.append((script, key_count, args))
+        return "1-0"
+
+
+def test_public_job_hides_payload_by_default() -> None:
+    store = JobStore(client=None, settings=Settings())  # type: ignore[arg-type]
+    job = {
+        "jobId": "job-1",
+        "status": "QUEUED",
+        "payload": json.dumps({"prompt": "secret"}),
+        "metadata": json.dumps({"requestId": "req-1"}),
+    }
+
+    public = store._public_job(job)
+
+    assert "payload" not in public
+    assert public["metadata"] == {"requestId": "req-1"}
+
+
+def test_enqueue_uses_atomic_backlog_counter_key() -> None:
+    redis = FakeRedis()
+    store = JobStore(client=redis, settings=Settings())  # type: ignore[arg-type]
+
+    job_id = store.enqueue({"prompt": "hello"}, service="svc")
+
+    assert len(job_id) == 32
+    _script, key_count, args = redis.calls[0]
+    assert key_count == 3
+    assert args[0] == "stream"
+    assert args[2] == "queue:count"
+
+
+def test_ack_decrements_backlog_counter_through_lua() -> None:
+    redis = FakeRedis()
+    store = JobStore(client=redis, settings=Settings())  # type: ignore[arg-type]
+
+    store.ack("1-0")
+
+    _script, key_count, args = redis.calls[0]
+    assert key_count == 2
+    assert args == ("stream", "queue:count", "workers", "1-0")
