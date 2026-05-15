@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import signal
 import threading
 import time
@@ -12,7 +13,12 @@ from .schemas import JobStatus, TERMINAL_STATUSES
 from .slot_lease import SlotLease, SlotLeaseManager
 
 
+LOGGER = logging.getLogger(__name__)
 STOP = threading.Event()
+
+
+def _configure_logging() -> None:
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 
 
 def _install_signal_handlers() -> None:
@@ -39,7 +45,7 @@ class Worker:
         ]
         for thread in threads:
             thread.start()
-        print(f"hermes-redis-gateway worker started threads={len(threads)}", flush=True)
+        LOGGER.info("hermes-redis-gateway worker started threads=%s", len(threads))
         while not STOP.is_set():
             time.sleep(0.5)
         for thread in threads:
@@ -55,8 +61,8 @@ class Worker:
                 continue
             message_id, job_id = message
             if not job_id:
-                print(f"dropping malformed stream message without jobId message_id={message_id}", flush=True)
-                self.store.ack_stream_message(message_id)
+                LOGGER.warning("dropping malformed stream message without jobId message_id=%s", message_id)
+                self.store.ack_without_counter(message_id)
                 continue
             lease = self.slots.acquire(job_id)
             if lease is None:
@@ -143,7 +149,7 @@ class Worker:
         if time.monotonic() - last_refresh < refresh_interval:
             return last_refresh
         if not self.slots.refresh(lease):
-            print(f"lost slot lease slot={lease.name}", flush=True)
+            LOGGER.warning("lost slot lease slot=%s", lease.name)
             return None
         return time.monotonic()
 
@@ -156,6 +162,7 @@ class Worker:
 
 
 def main() -> None:
+    _configure_logging()
     _install_signal_handlers()
     Worker().run_forever()
 
