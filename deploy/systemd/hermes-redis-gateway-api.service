@@ -1,0 +1,19 @@
+[Unit]
+Description=Hermes Redis Gateway API
+After=network-online.target redis-server.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=song
+Group=song
+WorkingDirectory=/home/song/Desktop/hermes-redis-gateway
+EnvironmentFile=/home/song/Desktop/hermes-redis-gateway/.env
+ExecStart=/home/song/Desktop/hermes-redis-gateway/.venv/bin/hermes-redis-gateway-api
+Restart=always
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
