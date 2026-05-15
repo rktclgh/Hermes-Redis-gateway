@@ -19,6 +19,7 @@ class FakeRedis:
     def __init__(self) -> None:
         self.calls: list[tuple[str, int, tuple[object, ...]]] = []
         self.xack_calls: list[tuple[str, str, str]] = []
+        self.hashes: dict[str, dict[object, object]] = {"job:job-1": {b"service": b"svc"}}
 
     def eval(self, script: str, key_count: int, *args: object) -> str:
         self.calls.append((script, key_count, args))
@@ -26,6 +27,9 @@ class FakeRedis:
 
     def xack(self, stream_key: str, stream_group: str, message_id: str) -> None:
         self.xack_calls.append((stream_key, stream_group, message_id))
+
+    def hgetall(self, key: str) -> dict[object, object]:
+        return self.hashes.get(key, {})
 
 
 def test_public_job_hides_payload_by_default() -> None:
@@ -54,6 +58,31 @@ def test_enqueue_uses_atomic_backlog_counter_key() -> None:
     assert key_count == 3
     assert args[0] == "stream"
     assert args[2] == "queue:count"
+
+
+def test_enqueue_stream_entries_always_include_job_id_when_counter_increments() -> None:
+    redis = FakeRedis()
+    store = JobStore(client=redis, settings=Settings())  # type: ignore[arg-type]
+
+    store.enqueue({"prompt": "hello"}, service="svc")
+
+    script, _key_count, args = redis.calls[0]
+    assert 'redis.call("XADD", KEYS[1], "*", "jobId", ARGV[4]' in script
+    assert 'redis.call("INCR", KEYS[3])' in script
+    assert len(str(args[6])) == 32
+
+
+def test_requeue_stream_entries_always_include_job_id_without_incrementing_counter() -> None:
+    redis = FakeRedis()
+    store = JobStore(client=redis, settings=Settings())  # type: ignore[arg-type]
+
+    store.requeue_pending("1-0", "job-1")
+
+    script, key_count, args = redis.calls[0]
+    assert key_count == 1
+    assert 'redis.call("XADD", KEYS[1], "*", "jobId", ARGV[3]' in script
+    assert 'redis.call("INCR"' not in script
+    assert args[0:5] == ("stream", "workers", "1-0", "job-1", "svc")
 
 
 def test_ack_decrements_backlog_counter_through_lua() -> None:

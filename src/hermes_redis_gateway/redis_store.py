@@ -135,7 +135,12 @@ class JobStore:
         )
 
     def ack_without_counter(self, message_id: str) -> None:
-        """Acknowledge a stream message without decrementing the backlog counter."""
+        """XACK a malformed stream entry that was not produced by enqueue/requeue.
+
+        Normal gateway entries are created only by enqueue/requeue and always
+        include a jobId, so they must use ack() to decrement queue_count_key.
+        Entries that are missing jobId cannot be tied to that counter safely.
+        """
         self.client.xack(self.settings.stream_key, self.settings.stream_group, message_id)
 
     def requeue_pending(self, message_id: str, job_id: str) -> None:
