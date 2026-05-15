@@ -37,9 +37,9 @@ class Settings:
     worker_poll_timeout_seconds: int = _int_env("HRG_WORKER_POLL_TIMEOUT_SECONDS", 5, 1)
 
     hermes_python: str = os.getenv("HRG_HERMES_PYTHON", "/home/song/.hermes/hermes-agent/venv/bin/python")
-    hermes_module: str = os.getenv("HRG_HERMES_MODULE", "hermes_cli.main")
     hermes_provider: str = os.getenv("HRG_HERMES_PROVIDER", "openai-codex")
     hermes_model: str = os.getenv("HRG_HERMES_MODEL", "gpt-5.4-mini")
+    hermes_toolsets: str = os.getenv("HRG_HERMES_TOOLSETS", "").strip()
     allowed_models: FrozenSet[str] = frozenset(
         item.strip()
         for item in os.getenv("HRG_ALLOWED_MODELS", "gpt-5.4-mini,gpt-5.4").split(",")

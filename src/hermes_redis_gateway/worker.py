@@ -47,7 +47,8 @@ class Worker:
 
     def _loop(self) -> None:
         while not STOP.is_set():
-            message = self.store.reclaim_stale(self.settings.slot_lease_seconds * 1000)
+            min_idle_ms = self._stream_reclaim_min_idle_ms()
+            message = self.store.reclaim_stale(min_idle_ms)
             if message is None:
                 message = self.store.read_next(self.settings.worker_poll_timeout_seconds)
             if message is None:
@@ -55,7 +56,7 @@ class Worker:
             message_id, job_id = message
             lease = self.slots.acquire(job_id)
             if lease is None:
-                time.sleep(0.5)
+                self.store.requeue_pending(message_id, job_id)
                 continue
             heartbeat_stop = threading.Event()
             lease_lost = threading.Event()
@@ -122,6 +123,13 @@ class Worker:
                 print(f"lost slot lease slot={lease.name}", flush=True)
                 lease_lost.set()
                 return
+
+    def _stream_reclaim_min_idle_ms(self) -> int:
+        min_idle_seconds = max(
+            self.settings.slot_lease_seconds,
+            self.settings.hermes_timeout_seconds + self.settings.worker_poll_timeout_seconds + 5,
+        )
+        return min_idle_seconds * 1000
 
 
 def main() -> None:

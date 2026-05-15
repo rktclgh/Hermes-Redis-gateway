@@ -134,6 +134,26 @@ class JobStore:
             message_id,
         )
 
+    def requeue_pending(self, message_id: str, job_id: str) -> None:
+        script = """
+        local acked = redis.call("XACK", KEYS[1], ARGV[1], ARGV[2])
+        if acked > 0 then
+            redis.call("XADD", KEYS[1], "*", "jobId", ARGV[3], "service", ARGV[4], "createdAt", ARGV[5])
+        end
+        return acked
+        """
+        raw = self._raw(job_id) or {}
+        self.client.eval(
+            script,
+            1,
+            self.settings.stream_key,
+            self.settings.stream_group,
+            message_id,
+            job_id,
+            raw.get("service", "unknown"),
+            str(_epoch_ms()),
+        )
+
     def get_payload(self, job_id: str) -> dict[str, Any] | None:
         raw = self._raw(job_id)
         if not raw:

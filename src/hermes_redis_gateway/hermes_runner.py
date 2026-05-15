@@ -22,6 +22,29 @@ SEED_FILES = (
 )
 
 
+BRIDGE_SCRIPT = """\
+from pathlib import Path
+import sys
+
+from hermes_cli.oneshot import run_oneshot
+
+
+def main() -> int:
+    prompt_path, provider, model, toolsets = sys.argv[1:5]
+    prompt = Path(prompt_path).read_text(encoding="utf-8")
+    return run_oneshot(
+        prompt,
+        provider=provider or None,
+        model=model or None,
+        toolsets=toolsets or None,
+    )
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+"""
+
+
 class HermesTimeoutError(RuntimeError):
     pass
 
@@ -46,19 +69,10 @@ class HermesRunner:
         slot_home = Path(self.settings.slot_home_root) / lease.name
         slot_workdir = Path(self.settings.slot_workdir_root) / lease.name
         self._prepare_slot(slot_home, slot_workdir)
+        bridge_path = self._write_bridge(slot_workdir)
+        prompt_path = self._write_prompt_file(slot_workdir, prompt)
 
-        command = [
-            self.settings.hermes_python,
-            "-m",
-            self.settings.hermes_module,
-            "--oneshot",
-            self._stateless_prompt(prompt),
-            "--provider",
-            self.settings.hermes_provider,
-            "--model",
-            model,
-            "--ignore-rules",
-        ]
+        command = self._build_command(bridge_path, prompt_path, model)
         env = os.environ.copy()
         env["HERMES_HOME"] = str(slot_home)
         env["HERMES_PROFILE"] = lease.profile
@@ -90,6 +104,11 @@ class HermesRunner:
             if process.poll() is None:
                 self._terminate(process)
             raise
+        finally:
+            try:
+                prompt_path.unlink(missing_ok=True)
+            except Exception:
+                pass
 
         elapsed_ms = int((time.monotonic() - started) * 1000)
         if process.returncode != 0:
@@ -115,6 +134,28 @@ class HermesRunner:
             target = slot_home / name
             if source.is_file():
                 shutil.copy2(source, target)
+
+    def _write_bridge(self, slot_workdir: Path) -> Path:
+        bridge_path = slot_workdir / "_hrg_oneshot_bridge.py"
+        bridge_path.write_text(BRIDGE_SCRIPT, encoding="utf-8")
+        os.chmod(bridge_path, 0o700)
+        return bridge_path
+
+    def _write_prompt_file(self, slot_workdir: Path, prompt: str) -> Path:
+        prompt_path = slot_workdir / f"prompt-{time.time_ns()}.txt"
+        prompt_path.write_text(self._stateless_prompt(prompt), encoding="utf-8")
+        os.chmod(prompt_path, 0o600)
+        return prompt_path
+
+    def _build_command(self, bridge_path: Path, prompt_path: Path, model: str) -> list[str]:
+        return [
+            self.settings.hermes_python,
+            str(bridge_path),
+            str(prompt_path),
+            self.settings.hermes_provider,
+            model,
+            self.settings.hermes_toolsets,
+        ]
 
     def _stateless_prompt(self, prompt: str) -> str:
         return (

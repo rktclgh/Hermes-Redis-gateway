@@ -53,9 +53,9 @@ Important environment variables:
 | `HRG_QUEUE_MAX_SIZE` | `100` | Max active queued/pending backlog before new jobs are rejected |
 | `HRG_QUEUE_COUNT_KEY` | `hermes:queue:default:count` | Atomic active backlog counter |
 | `HRG_HERMES_PYTHON` | `/home/song/.hermes/hermes-agent/venv/bin/python` | Python executable that can run Hermes |
-| `HRG_HERMES_MODULE` | `hermes_cli.main` | Hermes module |
 | `HRG_HERMES_PROVIDER` | `openai-codex` | Hermes provider |
 | `HRG_HERMES_MODEL` | `gpt-5.4-mini` | Default model |
+| `HRG_HERMES_TOOLSETS` | empty | Optional comma-separated Hermes toolsets passed to oneshot |
 | `HRG_ALLOWED_MODELS` | `gpt-5.4-mini,gpt-5.4` | Model allowlist |
 | `HRG_MAX_PROMPT_BYTES` | `200000` | Prompt/request size guard |
 
@@ -139,7 +139,11 @@ Redis Streams are used so worker-owned jobs can be recovered through pending-ent
 - Hermes timeout: job becomes `TIMEOUT`
 - Hermes non-zero exit: job becomes `FAILED`
 - Slot lease lost: worker terminates the Hermes subprocess and prevents success write
+- Slot unavailable after Stream consume: worker requeues the message without changing backlog count
+- Pending reclaim waits longer than Hermes timeout to avoid duplicate execution while a long subprocess is still alive
 - Sync wait timeout: `/generate` returns `202`; caller can poll `/jobs/{jobId}`
+
+Prompt privacy note: the worker writes each prompt to a slot-local `0600` temporary file and invokes a small bridge script that calls `hermes_cli.oneshot.run_oneshot()`. The prompt body is not placed in the subprocess argv.
 
 ## Development
 

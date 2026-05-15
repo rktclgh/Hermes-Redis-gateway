@@ -50,6 +50,14 @@ class Handler(BaseHTTPRequestHandler):
             write_json(self, 400, {"error": "invalid_request", "message": str(exc)})
             return
 
+        wait_timeout_seconds = SETTINGS.sync_wait_timeout_seconds
+        if parsed.path == "/generate":
+            try:
+                wait_timeout_seconds = parse_wait_timeout(payload)
+            except (TypeError, ValueError):
+                write_json(self, 400, {"error": "invalid_request", "message": "waitTimeoutSeconds must be an integer"})
+                return
+
         service = self.headers.get("X-HRG-Service", "unknown").strip() or "unknown"
         try:
             job_id = STORE.enqueue(payload, service=service)
@@ -67,12 +75,7 @@ class Handler(BaseHTTPRequestHandler):
             write_json(self, 202, {"jobId": job_id, "status": JobStatus.QUEUED.value})
             return
 
-        try:
-            requested_wait = int(payload.get("waitTimeoutSeconds") or SETTINGS.sync_wait_timeout_seconds)
-        except (TypeError, ValueError):
-            write_json(self, 400, {"error": "invalid_request", "message": "waitTimeoutSeconds must be an integer"})
-            return
-        self._wait_for_job(job_id, min(requested_wait, SETTINGS.max_wait_timeout_seconds))
+        self._wait_for_job(job_id, min(wait_timeout_seconds, SETTINGS.max_wait_timeout_seconds))
 
     def _health(self) -> None:
         try:
@@ -142,6 +145,10 @@ def _queue_backlog() -> int:
     if isinstance(value, bytes):
         value = value.decode("utf-8")
     return int(value or 0)
+
+
+def parse_wait_timeout(payload: dict[str, Any], settings: Settings = SETTINGS) -> int:
+    return int(payload.get("waitTimeoutSeconds") or settings.sync_wait_timeout_seconds)
 
 
 def main() -> None:
