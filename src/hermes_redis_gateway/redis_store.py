@@ -35,9 +35,7 @@ class JobStore:
         prompt = require_prompt(payload)
         if len(prompt.encode("utf-8")) > self.settings.max_prompt_bytes:
             raise ValueError(f"prompt is too large; max {self.settings.max_prompt_bytes} bytes")
-        model = str(payload.get("model") or self.settings.hermes_model).strip()
-        if model not in self.settings.allowed_models:
-            raise ValueError(f"model is not allowed: {model}")
+        self.settings.runtime_model_for(payload.get("model"))
 
         job_id = uuid4().hex
         now = str(_epoch_ms())

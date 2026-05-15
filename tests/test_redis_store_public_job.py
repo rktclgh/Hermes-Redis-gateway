@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import json
 
 from hermes_redis_gateway.redis_store import JobStore
@@ -6,6 +8,7 @@ from hermes_redis_gateway.redis_store import JobStore
 class Settings:
     allowed_models = frozenset({"gpt-5.4-mini"})
     hermes_model = "gpt-5.4-mini"
+    slot_profile_prefix = "vlainter-stateless-llm"
     job_prefix = "job:"
     job_ttl_seconds = 60
     max_prompt_bytes = 1000
@@ -13,6 +16,18 @@ class Settings:
     queue_max_size = 10
     stream_group = "workers"
     stream_key = "stream"
+
+    def requested_model(self, payload_model: object | None) -> str:
+        model = str(payload_model or self.hermes_model).strip()
+        return model or self.hermes_model
+
+    def runtime_model_for(self, payload_model: object | None) -> str:
+        model = self.requested_model(payload_model)
+        if model == self.slot_profile_prefix:
+            return self.hermes_model
+        if model in self.allowed_models:
+            return model
+        raise ValueError(f"model is not allowed: {model}")
 
 
 class FakeRedis:
@@ -58,6 +73,16 @@ def test_enqueue_uses_atomic_backlog_counter_key() -> None:
     assert key_count == 3
     assert args[0] == "stream"
     assert args[2] == "queue:count"
+
+
+def test_enqueue_accepts_slot_profile_prefix_as_public_model_alias() -> None:
+    redis = FakeRedis()
+    store = JobStore(client=redis, settings=Settings())  # type: ignore[arg-type]
+
+    job_id = store.enqueue({"prompt": "hello", "model": "vlainter-stateless-llm"}, service="svc")
+
+    assert len(job_id) == 32
+    assert len(redis.calls) == 1
 
 
 def test_enqueue_stream_entries_always_include_job_id_when_counter_increments() -> None:
