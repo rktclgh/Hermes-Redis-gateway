@@ -134,7 +134,8 @@ class JobStore:
             message_id,
         )
 
-    def ack_stream_message(self, message_id: str) -> None:
+    def ack_without_counter(self, message_id: str) -> None:
+        """Acknowledge a stream message without decrementing the backlog counter."""
         self.client.xack(self.settings.stream_key, self.settings.stream_group, message_id)
 
     def requeue_pending(self, message_id: str, job_id: str) -> None:

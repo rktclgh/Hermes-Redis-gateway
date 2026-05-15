@@ -67,11 +67,11 @@ def test_ack_decrements_backlog_counter_through_lua() -> None:
     assert args == ("stream", "queue:count", "workers", "1-0")
 
 
-def test_ack_stream_message_does_not_touch_backlog_counter() -> None:
+def test_ack_without_counter_does_not_touch_backlog_counter() -> None:
     redis = FakeRedis()
     store = JobStore(client=redis, settings=Settings())  # type: ignore[arg-type]
 
-    store.ack_stream_message("1-0")
+    store.ack_without_counter("1-0")
 
     assert redis.calls == []
     assert redis.xack_calls == [("stream", "workers", "1-0")]
