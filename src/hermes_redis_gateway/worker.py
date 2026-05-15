@@ -55,7 +55,8 @@ class Worker:
                 continue
             message_id, job_id = message
             if not job_id:
-                self.store.ack(message_id)
+                print(f"dropping malformed stream message without jobId message_id={message_id}", flush=True)
+                self.store.ack_stream_message(message_id)
                 continue
             lease = self.slots.acquire(job_id)
             if lease is None:

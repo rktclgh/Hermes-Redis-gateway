@@ -134,6 +134,9 @@ class JobStore:
             message_id,
         )
 
+    def ack_stream_message(self, message_id: str) -> None:
+        self.client.xack(self.settings.stream_key, self.settings.stream_group, message_id)
+
     def requeue_pending(self, message_id: str, job_id: str) -> None:
         script = """
         local acked = redis.call("XACK", KEYS[1], ARGV[1], ARGV[2])

@@ -3,6 +3,8 @@ from __future__ import annotations
 import threading
 from types import SimpleNamespace
 
+import pytest
+
 from hermes_redis_gateway.slot_lease import SlotLease
 from hermes_redis_gateway import worker as worker_module
 from hermes_redis_gateway.worker import Worker
@@ -25,7 +27,7 @@ class SlotsShouldNotAcquire:
 
 class StoreWithMalformedMessage:
     def __init__(self) -> None:
-        self.acked: list[str] = []
+        self.stream_acked: list[str] = []
 
     def reclaim_stale(self, _min_idle_ms: int) -> None:
         return None
@@ -33,8 +35,8 @@ class StoreWithMalformedMessage:
     def read_next(self, _timeout_seconds: int) -> tuple[str, str]:
         return "1-0", ""
 
-    def ack(self, message_id: str) -> None:
-        self.acked.append(message_id)
+    def ack_stream_message(self, message_id: str) -> None:
+        self.stream_acked.append(message_id)
         worker_module.STOP.set()
 
 
@@ -49,7 +51,9 @@ def test_reclaim_idle_waits_past_hermes_timeout() -> None:
     assert worker._stream_reclaim_min_idle_ms() == 190_000
 
 
-def test_loop_acknowledges_malformed_stream_message_without_slot_acquire() -> None:
+def test_loop_logs_and_acknowledges_malformed_stream_message_without_slot_acquire(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
     worker = Worker.__new__(Worker)
     worker.settings = SimpleNamespace(
         hermes_timeout_seconds=180,
@@ -65,7 +69,9 @@ def test_loop_acknowledges_malformed_stream_message_without_slot_acquire() -> No
     finally:
         worker_module.STOP.clear()
 
-    assert worker.store.acked == ["1-0"]
+    assert worker.store.stream_acked == ["1-0"]
+    captured = capsys.readouterr()
+    assert "dropping malformed stream message without jobId message_id=1-0" in captured.out
 
 
 def test_refresh_lease_reports_lost_slot() -> None:

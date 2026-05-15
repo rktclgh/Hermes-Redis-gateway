@@ -18,10 +18,14 @@ class Settings:
 class FakeRedis:
     def __init__(self) -> None:
         self.calls: list[tuple[str, int, tuple[object, ...]]] = []
+        self.xack_calls: list[tuple[str, str, str]] = []
 
     def eval(self, script: str, key_count: int, *args: object) -> str:
         self.calls.append((script, key_count, args))
         return "1-0"
+
+    def xack(self, stream_key: str, stream_group: str, message_id: str) -> None:
+        self.xack_calls.append((stream_key, stream_group, message_id))
 
 
 def test_public_job_hides_payload_by_default() -> None:
@@ -61,6 +65,16 @@ def test_ack_decrements_backlog_counter_through_lua() -> None:
     _script, key_count, args = redis.calls[0]
     assert key_count == 2
     assert args == ("stream", "queue:count", "workers", "1-0")
+
+
+def test_ack_stream_message_does_not_touch_backlog_counter() -> None:
+    redis = FakeRedis()
+    store = JobStore(client=redis, settings=Settings())  # type: ignore[arg-type]
+
+    store.ack_stream_message("1-0")
+
+    assert redis.calls == []
+    assert redis.xack_calls == [("stream", "workers", "1-0")]
 
 
 def test_parse_stream_response_preserves_message_id_without_job_id() -> None:
