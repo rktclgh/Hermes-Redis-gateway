@@ -61,3 +61,21 @@ def test_ack_decrements_backlog_counter_through_lua() -> None:
     _script, key_count, args = redis.calls[0]
     assert key_count == 2
     assert args == ("stream", "queue:count", "workers", "1-0")
+
+
+def test_parse_stream_response_ignores_malformed_message_without_job_id() -> None:
+    store = JobStore(client=None, settings=Settings())  # type: ignore[arg-type]
+
+    response = [(b"stream", [(b"1-0", {b"service": b"svc"})])]
+
+    assert store._parse_stream_response(response) is None
+
+
+def test_raw_skips_none_values() -> None:
+    class RedisWithNone:
+        def hgetall(self, _key: str) -> dict[object, object]:
+            return {b"jobId": b"job-1", None: b"ignored", b"status": None}
+
+    store = JobStore(client=RedisWithNone(), settings=Settings())  # type: ignore[arg-type]
+
+    assert store._raw("job-1") == {"jobId": "job-1"}

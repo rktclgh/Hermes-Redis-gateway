@@ -25,3 +25,15 @@ def test_runner_command_uses_prompt_file_not_prompt_argv() -> None:
         "",
     ]
     assert "sensitive prompt" not in " ".join(command)
+
+
+def test_prompt_file_uses_uuid_name(tmp_path: Path) -> None:
+    settings = SimpleNamespace()
+    runner = HermesRunner(settings)  # type: ignore[arg-type]
+
+    prompt_path = runner._write_prompt_file(tmp_path, "hello")
+
+    assert prompt_path.name.startswith("prompt-")
+    assert prompt_path.suffix == ".txt"
+    assert len(prompt_path.stem.removeprefix("prompt-")) == 32
+    assert "hello" in prompt_path.read_text(encoding="utf-8")

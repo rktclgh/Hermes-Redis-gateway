@@ -7,6 +7,7 @@ import signal
 import subprocess
 import time
 from typing import Any
+from uuid import uuid4
 
 from .config import Settings
 from .slot_lease import SlotLease
@@ -142,7 +143,7 @@ class HermesRunner:
         return bridge_path
 
     def _write_prompt_file(self, slot_workdir: Path, prompt: str) -> Path:
-        prompt_path = slot_workdir / f"prompt-{time.time_ns()}.txt"
+        prompt_path = slot_workdir / f"prompt-{uuid4().hex}.txt"
         prompt_path.write_text(self._stateless_prompt(prompt), encoding="utf-8")
         os.chmod(prompt_path, 0o600)
         return prompt_path
