@@ -63,12 +63,12 @@ def test_ack_decrements_backlog_counter_through_lua() -> None:
     assert args == ("stream", "queue:count", "workers", "1-0")
 
 
-def test_parse_stream_response_ignores_malformed_message_without_job_id() -> None:
+def test_parse_stream_response_preserves_message_id_without_job_id() -> None:
     store = JobStore(client=None, settings=Settings())  # type: ignore[arg-type]
 
     response = [(b"stream", [(b"1-0", {b"service": b"svc"})])]
 
-    assert store._parse_stream_response(response) is None
+    assert store._parse_stream_response(response) == ("1-0", "")
 
 
 def test_raw_skips_none_values() -> None:
