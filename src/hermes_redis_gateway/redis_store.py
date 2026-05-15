@@ -238,9 +238,9 @@ def redis_client(settings: Settings) -> redis.Redis:
 
 def _parse_stream_message(message_id: Any, fields: dict[Any, Any]) -> tuple[str, str] | None:
     decoded_message_id = _decode(message_id)
-    decoded_job_id = _decode(fields.get(b"jobId") or fields.get("jobId"))
-    if not decoded_message_id or not decoded_job_id:
+    if not decoded_message_id:
         return None
+    decoded_job_id = _decode(fields.get(b"jobId") or fields.get("jobId")) or ""
     return decoded_message_id, decoded_job_id
 
 

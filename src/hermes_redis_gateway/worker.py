@@ -54,10 +54,13 @@ class Worker:
             if message is None:
                 continue
             message_id, job_id = message
+            if not job_id:
+                self.store.ack(message_id)
+                continue
             lease = self.slots.acquire(job_id)
             if lease is None:
                 self.store.requeue_pending(message_id, job_id)
-                time.sleep(1.0)
+                STOP.wait(1.0)
                 continue
             heartbeat_stop = threading.Event()
             lease_lost = threading.Event()
