@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import secrets
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import time
 from typing import Any
@@ -81,7 +82,7 @@ class Handler(BaseHTTPRequestHandler):
         try:
             REDIS.ping()
             redis_status = "UP"
-        except Exception:
+        except RedisError:
             redis_status = "DOWN"
         status = 200 if redis_status == "UP" else 503
         write_json(
@@ -126,9 +127,7 @@ class Handler(BaseHTTPRequestHandler):
         write_json(self, 202, {"jobId": job_id, "status": "WAIT_TIMEOUT"}, {"Retry-After": "2"})
 
     def _authorized(self) -> bool:
-        if not SETTINGS.api_key:
-            return True
-        return self.headers.get("Authorization", "") == f"Bearer {SETTINGS.api_key}"
+        return is_authorized_header(self.headers.get("Authorization", ""), SETTINGS.api_key)
 
     def log_message(self, fmt: str, *args: Any) -> None:
         print(f"{self.address_string()} - {fmt % args}", flush=True)
@@ -149,6 +148,12 @@ def _queue_backlog() -> int:
 
 def parse_wait_timeout(payload: dict[str, Any], settings: Settings = SETTINGS) -> int:
     return int(payload.get("waitTimeoutSeconds") or settings.sync_wait_timeout_seconds)
+
+
+def is_authorized_header(authorization_header: str, api_key: str) -> bool:
+    if not api_key:
+        return True
+    return secrets.compare_digest(authorization_header, f"Bearer {api_key}")
 
 
 def main() -> None:
