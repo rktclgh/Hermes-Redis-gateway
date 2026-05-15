@@ -18,6 +18,26 @@ class RefreshingSlots:
         return self.refresh_result
 
 
+class SlotsShouldNotAcquire:
+    def acquire(self, _job_id: str) -> None:
+        raise AssertionError("malformed stream messages must be acknowledged before slot acquisition")
+
+
+class StoreWithMalformedMessage:
+    def __init__(self) -> None:
+        self.acked: list[str] = []
+
+    def reclaim_stale(self, _min_idle_ms: int) -> None:
+        return None
+
+    def read_next(self, _timeout_seconds: int) -> tuple[str, str]:
+        return "1-0", ""
+
+    def ack(self, message_id: str) -> None:
+        self.acked.append(message_id)
+        worker_module.STOP.set()
+
+
 def test_reclaim_idle_waits_past_hermes_timeout() -> None:
     worker = Worker.__new__(Worker)
     worker.settings = SimpleNamespace(
@@ -27,6 +47,25 @@ def test_reclaim_idle_waits_past_hermes_timeout() -> None:
     )
 
     assert worker._stream_reclaim_min_idle_ms() == 190_000
+
+
+def test_loop_acknowledges_malformed_stream_message_without_slot_acquire() -> None:
+    worker = Worker.__new__(Worker)
+    worker.settings = SimpleNamespace(
+        hermes_timeout_seconds=180,
+        slot_lease_seconds=60,
+        worker_poll_timeout_seconds=5,
+    )
+    worker.store = StoreWithMalformedMessage()
+    worker.slots = SlotsShouldNotAcquire()
+
+    worker_module.STOP.clear()
+    try:
+        worker._loop()
+    finally:
+        worker_module.STOP.clear()
+
+    assert worker.store.acked == ["1-0"]
 
 
 def test_refresh_lease_reports_lost_slot() -> None:
