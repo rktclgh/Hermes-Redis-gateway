@@ -66,14 +66,15 @@ class HermesRunner:
 
     def run(self, lease: SlotLease, payload: dict[str, Any], stop_event: Any | None = None) -> dict[str, Any]:
         prompt = str(payload["prompt"]).strip()
-        model = str(payload.get("model") or self.settings.hermes_model).strip()
+        requested_model = self.settings.requested_model(payload.get("model"))
+        runtime_model = self.settings.runtime_model_for(payload.get("model"))
         slot_home = Path(self.settings.slot_home_root) / lease.name
         slot_workdir = Path(self.settings.slot_workdir_root) / lease.name
         self._prepare_slot(slot_home, slot_workdir)
         bridge_path = self._write_bridge(slot_workdir)
         prompt_path = self._write_prompt_file(slot_workdir, prompt)
 
-        command = self._build_command(bridge_path, prompt_path, model)
+        command = self._build_command(bridge_path, prompt_path, runtime_model)
         env = os.environ.copy()
         env["HERMES_HOME"] = str(slot_home)
         env["HERMES_PROFILE"] = lease.profile
@@ -118,9 +119,9 @@ class HermesRunner:
 
         return {
             "text": stdout.strip(),
-            "model": model,
+            "model": requested_model,
             "runtimeProvider": self.settings.hermes_provider,
-            "runtimeModel": model,
+            "runtimeModel": runtime_model,
             "slot": lease.name,
             "profile": lease.profile,
             "elapsedMs": elapsed_ms,

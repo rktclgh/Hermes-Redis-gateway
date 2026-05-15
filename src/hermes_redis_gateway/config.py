@@ -53,6 +53,20 @@ class Settings:
     slot_workdir_root: str = os.getenv("HRG_SLOT_WORKDIR_ROOT", "/tmp/hermes-redis-gateway-slots")
     slot_profile_prefix: str = os.getenv("HRG_SLOT_PROFILE_PREFIX", "vlainter-stateless-llm")
 
+    def requested_model(self, payload_model: object | None) -> str:
+        model = str(payload_model or self.hermes_model).strip()
+        if not model:
+            return self.hermes_model
+        return model
+
+    def runtime_model_for(self, payload_model: object | None) -> str:
+        model = self.requested_model(payload_model)
+        if model == self.slot_profile_prefix:
+            return self.hermes_model
+        if model in self.allowed_models:
+            return model
+        raise ValueError(f"model is not allowed: {model}")
+
 
 def load_settings() -> Settings:
     settings = Settings()
